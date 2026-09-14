@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- Admin page: library figures (image attachments, originals on disk, generated files still on disk, attachments still carrying size metadata), computed on demand and cached for a day; last clean recorded by the CLI; templates still calling Timber resize filters listed in the status table; simplified status rows.
+- Attachment details: read-only Media Kit row with the worker URL, a sample crop link, the version token and whether generated sizes remain.
+
 ## 1.1.0
 
 - Tools → Media Kit admin page: version, active state, worker host, secret status, and a live check that fetches one image through the worker.

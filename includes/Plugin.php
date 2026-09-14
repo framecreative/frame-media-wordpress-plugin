@@ -81,6 +81,8 @@ class Plugin {
 		if ( $this->secret ) {
 			add_filter( 'wp_update_attachment_metadata', [ $this, 'ping_detect' ], 500, 2 );
 		}
+
+		add_filter( 'attachment_fields_to_edit', [ $this, 'attachment_fields' ], 10, 2 );
 	}
 
 	/**
@@ -537,7 +539,129 @@ class Plugin {
 			}
 		}
 
+		if ( $delete ) {
+			update_option( 'frame_media_last_clean', [ 'time' => time(), 'files' => $result['files'], 'bytes' => $result['bytes'], 'attachments' => $result['attachments'] ], false );
+		}
+
 		return $result;
+	}
+
+	/**
+	 * Library figures for the admin page: image attachments, how many still
+	 * carry `sizes` metadata, bytes of attached files on disk, and the
+	 * generated-file scan. Cached for a day; `$refresh` recomputes.
+	 *
+	 * @param bool $refresh
+	 * @return array|null null when never computed and not refreshing
+	 */
+	public function library_stats( $refresh = false ) {
+		$cached = get_transient( 'frame_media_library_stats' );
+
+		if ( $cached && ! $refresh ) {
+			return $cached;
+		}
+
+		if ( ! $refresh ) {
+			return null;
+		}
+
+		$ids = get_posts( [ 'post_type' => 'attachment', 'post_status' => 'inherit', 'post_mime_type' => 'image', 'posts_per_page' => -1, 'fields' => 'ids' ] );
+		$stats = [ 'images' => count( $ids ), 'with_sizes' => 0, 'attached_bytes' => 0, 'missing_files' => 0 ];
+
+		update_meta_cache( 'post', $ids );
+
+		foreach ( $ids as $id ) {
+			$meta = wp_get_attachment_metadata( $id );
+
+			if ( ! empty( $meta['sizes'] ) ) {
+				$stats['with_sizes']++;
+			}
+
+			$file = get_attached_file( $id );
+
+			if ( $file && is_file( $file ) ) {
+				$stats['attached_bytes'] += filesize( $file ) ?: 0;
+			} else {
+				$stats['missing_files']++;
+			}
+		}
+
+		$scan = $this->scan( 0, false );
+		$stats['generated_files'] = $scan['files'];
+		$stats['generated_bytes'] = $scan['bytes'];
+		$stats['time'] = time();
+
+		set_transient( 'frame_media_library_stats', $stats, DAY_IN_SECONDS );
+
+		return $stats;
+	}
+
+	/**
+	 * Theme templates still calling Timber's resize-family filters, which
+	 * keep generating files on the host. [ relative path => hits ].
+	 *
+	 * @return array
+	 */
+	public function resize_audit() {
+		$hits = [];
+
+		foreach ( array_unique( [ get_stylesheet_directory(), get_template_directory() ] ) as $root ) {
+			if ( ! is_dir( $root ) ) {
+				continue;
+			}
+
+			$iterator = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $root, \FilesystemIterator::SKIP_DOTS ) );
+
+			foreach ( $iterator as $file ) {
+				if ( $file->getExtension() !== 'twig' || strpos( $file->getPathname(), '/node_modules/' ) !== false ) {
+					continue;
+				}
+
+				$count = preg_match_all( '/\|\s*(resize|retina|letterbox|tojpg|towebp)\b/', file_get_contents( $file->getPathname() ) );
+
+				if ( $count ) {
+					$hits[ str_replace( trailingslashit( $root ), '', $file->getPathname() ) ] = $count;
+				}
+			}
+		}
+
+		ksort( $hits );
+
+		return $hits;
+	}
+
+	/**
+	 * Read-only "Media Kit" field on the attachment details screen.
+	 *
+	 * @param array    $fields
+	 * @param \WP_Post $post
+	 * @return array
+	 */
+	public function attachment_fields( $fields, $post ) {
+		if ( ! wp_attachment_is_image( $post->ID ) ) {
+			return $fields;
+		}
+
+		if ( ! $this->base ) {
+			$html = '<span style="color:#646970">Kit inactive on this environment — served from this host.</span>';
+		} else {
+			$url = wp_get_attachment_url( $post->ID );
+			$sample = add_query_arg( [ 'w' => 400, 'h' => 300, 'fit' => 'cover' ], $url );
+			$version = $this->version_for_attachment( $post->ID );
+			$meta = wp_get_attachment_metadata( $post->ID );
+			$html = '<a href="' . esc_url( $url ) . '" target="_blank"><code style="font-size:11px; word-break:break-all">' . esc_html( $url ) . '</code></a>'
+				. '<br><a href="' . esc_url( $sample ) . '" target="_blank">Sample 400×300 crop</a>'
+				. ' · version ' . esc_html( $version ?: '—' )
+				. ( ! empty( $meta['sizes'] ) ? ' · <span style="color:#996800">generated sizes still on disk</span>' : ' · no generated sizes' );
+		}
+
+		$fields['frame_media'] = [
+			'label' => 'Media Kit',
+			'input' => 'html',
+			'html' => $html,
+		];
+
+		return $fields;
 	}
 
 	/**
