@@ -64,3 +64,14 @@ Read from a defined constant first, then the environment:
 | --- | --- |
 | `FRAME_MEDIA_HOST` | The site's worker hostname. Setting it activates the plugin. |
 | `FRAME_MEDIA_SECRET` | Faces sites only: bearer for the upload ping. |
+| `FRAME_MEDIA_UPLOAD_BASES` | Optional, comma-separated: extra base URLs to treat as this site's uploads (a CDN in front of uploads). WP Offload Media's delivery domain is detected automatically. |
+
+## Offloaded media
+
+Sites using WP Offload Media keep working: the plugin reads its delivery
+settings and treats `https://<cloudfront>/<object prefix>` (or the bucket
+URL) as an upload base, so URLs it has rewritten are recognised and
+re-pointed at the worker. In the kit's manifest the site's `origin` is then
+the delivery domain and `uploadPrefix` the object prefix path, e.g.
+`/content/uploads/`. `wp frame-media clean` only touches files on this host;
+sizes already in the bucket stay there.

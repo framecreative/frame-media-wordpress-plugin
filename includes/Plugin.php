@@ -72,9 +72,11 @@ class Plugin {
 
 		add_filter( 'intermediate_image_sizes_advanced', '__return_empty_array', 9999 );
 
+		// Late priorities: run after offload plugins (WP Offload Media rewrites
+		// these to its delivery domain first; upload_bases() recognises it).
 		add_filter( 'wp_get_attachment_url', [ $this, 'attachment_url' ], 9999, 2 );
-		add_filter( 'image_downsize', [ $this, 'downsize' ], 10, 3 );
-		add_filter( 'wp_calculate_image_srcset', [ $this, 'srcset' ], 10, 5 );
+		add_filter( 'image_downsize', [ $this, 'downsize' ], 9999, 3 );
+		add_filter( 'wp_calculate_image_srcset', [ $this, 'srcset' ], 9999, 5 );
 		add_filter( 'the_content', [ $this, 'rewrite_content' ], 9999 );
 		add_filter( 'widget_text_content', [ $this, 'rewrite_content' ], 9999 );
 
@@ -411,25 +413,32 @@ class Plugin {
 	}
 
 	/**
-	 * Host-swaps upload image URLs inside HTML content (absolute or
-	 * root-relative); non-image files stay on hosting.
+	 * Host-swaps upload image URLs inside HTML content on every recognised
+	 * base (site uploads, offload delivery domain), plus root-relative ones;
+	 * non-image files stay where they are.
 	 *
 	 * @param string $content
 	 * @return string
 	 */
 	public function rewrite_content( $content ) {
-		if ( ! $content || strpos( $content, '/uploads/' ) === false ) {
+		if ( ! $content ) {
 			return $content;
 		}
 
-		$host = preg_quote( wp_parse_url( $this->upload_url, \PHP_URL_HOST ), '#' );
-		$path = preg_quote( wp_parse_url( $this->upload_url, \PHP_URL_PATH ), '#' );
-		$file = '/[^\s"\'<>()?,]+\.(?:' . self::IMAGE_EXTENSIONS . ')';
+		$file = '/[^\\s"\'<>()?,]+\\.(?:' . self::IMAGE_EXTENSIONS . ')';
 
-		// Absolute URLs on this site's host, then root-relative ones at the
-		// start of an attribute value or srcset entry.
-		$content = preg_replace( '#(?:https?:)?//' . $host . '(' . $path . $file . ')#i', $this->base . '$1', $content );
-		$content = preg_replace( '#(?<=["\'\s(,=])(' . $path . $file . ')#i', $this->base . '$1', $content );
+		foreach ( $this->upload_bases() as $base ) {
+			$host = preg_quote( wp_parse_url( $base, \PHP_URL_HOST ), '#' );
+			$path = preg_quote( wp_parse_url( $base, \PHP_URL_PATH ) ?: '', '#' );
+
+			$content = preg_replace( '#(?:https?:)?//' . $host . '(' . $path . $file . ')#i', $this->base . '$1', $content );
+		}
+
+		$path = preg_quote( wp_parse_url( $this->upload_url, \PHP_URL_PATH ) ?: '', '#' );
+
+		if ( $path ) {
+			$content = preg_replace( '#(?<=["\'\\s(,=])(' . $path . $file . ')#i', $this->base . '$1', $content );
+		}
 
 		return $content;
 	}
@@ -781,26 +790,73 @@ class Plugin {
 	}
 
 	/**
-	 * Site-relative upload path ("/content/uploads/2024/04/photo.jpg") for
-	 * an upload URL on this site, or null for anything else.
+	 * Base URLs that count as this site's uploads: the uploads URL itself,
+	 * WP Offload Media's delivery URL when that plugin serves files, and
+	 * anything in FRAME_MEDIA_UPLOAD_BASES (comma-separated). A base's path
+	 * is what the worker sees, so the manifest's uploadPrefix must match it
+	 * (for Offload Media: its object prefix).
+	 *
+	 * @return string[]
+	 */
+	public function upload_bases() {
+		static $bases = null;
+
+		if ( $bases !== null ) {
+			return $bases;
+		}
+
+		$bases = [ $this->upload_url ];
+		$offload = get_site_option( 'tantan_wordpress_s3' );
+
+		if ( is_array( $offload ) && ! empty( $offload['serve-from-s3'] ) ) {
+			$prefix = ! empty( $offload['enable-object-prefix'] ) ? '/' . trim( (string) ( $offload['object-prefix'] ?? '' ), '/' ) : '';
+			$host = null;
+
+			if ( ( $offload['domain'] ?? '' ) === 'cloudfront' && ! empty( $offload['cloudfront'] ) ) {
+				$host = $offload['cloudfront'];
+			} elseif ( ! empty( $offload['bucket'] ) ) {
+				$host = $offload['bucket'] . '.s3.' . ( $offload['region'] ?: 'us-east-1' ) . '.amazonaws.com';
+			}
+
+			if ( $host ) {
+				$bases[] = rtrim( 'https://' . $host . $prefix, '/' );
+			}
+		}
+
+		foreach ( array_filter( array_map( 'trim', explode( ',', (string) self::config( 'FRAME_MEDIA_UPLOAD_BASES', '' ) ) ) ) as $extra ) {
+			$bases[] = rtrim( $extra, '/' );
+		}
+
+		$bases = array_values( array_unique( apply_filters( 'frame_media/upload_bases', $bases ) ) );
+
+		return $bases;
+	}
+
+	/**
+	 * Worker path ("/content/uploads/2024/04/photo.jpg") for an upload URL
+	 * on any recognised base — the base's own path plus the remainder — or
+	 * null for anything else.
 	 *
 	 * @param string $url
 	 * @return string|null
 	 */
 	private function upload_path( $url ) {
 		$url = strtok( (string) $url, '?#' );
-		$upload_path = wp_parse_url( $this->upload_url, \PHP_URL_PATH );
 
-		if ( strpos( $url, $this->upload_url . '/' ) === 0 ) {
-			return substr( $url, strlen( $this->upload_url ) - strlen( $upload_path ) );
+		foreach ( $this->upload_bases() as $base ) {
+			if ( strpos( $url, $base . '/' ) === 0 ) {
+				return ( wp_parse_url( $base, \PHP_URL_PATH ) ?: '' ) . substr( $url, strlen( $base ) );
+			}
 		}
 
 		// Already rewritten (wp_get_attachment_url is filtered too).
-		if ( $this->base && strpos( $url, $this->base . $upload_path . '/' ) === 0 ) {
+		if ( $this->base && strpos( $url, $this->base . '/' ) === 0 ) {
 			return substr( $url, strlen( $this->base ) );
 		}
 
-		if ( strpos( $url, $upload_path . '/' ) === 0 ) {
+		$upload_path = wp_parse_url( $this->upload_url, \PHP_URL_PATH );
+
+		if ( $upload_path && strpos( $url, $upload_path . '/' ) === 0 ) {
 			return $url;
 		}
 
