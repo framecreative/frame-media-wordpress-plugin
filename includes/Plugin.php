@@ -477,13 +477,29 @@ class Plugin {
 	 */
 	public function cli( $args, $assoc ) {
 		$command = $args[0] ?? 'status';
-		$dry = $command === 'status' || isset( $assoc['dry-run'] );
-		$limit = (int) ( $assoc['limit'] ?? 0 );
 
 		if ( ! in_array( $command, [ 'clean', 'status' ], true ) ) {
 			\WP_CLI::error( 'Usage: wp frame-media clean [--dry-run] [--limit=<n>] | status' );
 		}
 
+		$delete = $command === 'clean' && ! isset( $assoc['dry-run'] );
+		$result = $this->scan( (int) ( $assoc['limit'] ?? 0 ), $delete );
+		$mb = round( $result['bytes'] / 1048576, 1 );
+		$verb = $delete ? 'Deleted' : 'Would delete';
+
+		\WP_CLI::success( "$verb {$result['files']} generated files ($mb MB) across {$result['attachments']} of {$result['scanned']} image attachments." );
+	}
+
+	/**
+	 * Scans image attachments for generated files, optionally deleting them
+	 * and clearing their `sizes` metadata. Returns
+	 * { scanned, attachments, files, bytes, deleted }.
+	 *
+	 * @param int  $limit  0 = all
+	 * @param bool $delete
+	 * @return array
+	 */
+	public function scan( $limit = 0, $delete = false ) {
 		$ids = get_posts( [
 			'post_type' => 'attachment',
 			'post_status' => 'inherit',
@@ -494,9 +510,7 @@ class Plugin {
 			'order' => 'ASC',
 		] );
 
-		$files = 0;
-		$bytes = 0;
-		$attachments = 0;
+		$result = [ 'scanned' => count( $ids ), 'attachments' => 0, 'files' => 0, 'bytes' => 0, 'deleted' => $delete ];
 
 		foreach ( $ids as $id ) {
 			$generated = $this->generated_files( $id );
@@ -505,28 +519,74 @@ class Plugin {
 				continue;
 			}
 
-			$attachments++;
+			$result['attachments']++;
 
 			foreach ( $generated as $file ) {
-				$files++;
-				$bytes += filesize( $file ) ?: 0;
+				$result['files']++;
+				$result['bytes'] += filesize( $file ) ?: 0;
 
-				if ( ! $dry ) {
+				if ( $delete ) {
 					wp_delete_file( $file );
 				}
 			}
 
-			if ( ! $dry ) {
+			if ( $delete ) {
 				$meta = wp_get_attachment_metadata( $id );
 				$meta['sizes'] = [];
 				wp_update_attachment_metadata( $id, $meta );
 			}
 		}
 
-		$mb = round( $bytes / 1048576, 1 );
-		$verb = $dry ? 'Would delete' : 'Deleted';
+		return $result;
+	}
 
-		\WP_CLI::success( "$verb $files generated files ($mb MB) across $attachments of " . count( $ids ) . ' image attachments.' );
+	/**
+	 * Settings as resolved, for display.
+	 *
+	 * @return array { active, host, base, secret_set }
+	 */
+	public function summary() {
+		return [
+			'active' => (bool) $this->base,
+			'host' => self::config( 'FRAME_MEDIA_HOST' ) ?: '',
+			'base' => $this->base ?: '',
+			'secret_set' => (bool) $this->secret,
+		];
+	}
+
+	/**
+	 * Fetches one recent image through the worker and reports the outcome.
+	 *
+	 * @return array { ok, status, served_by, url, message }
+	 */
+	public function probe() {
+		if ( ! $this->base ) {
+			return [ 'ok' => false, 'status' => 0, 'served_by' => '', 'url' => '', 'message' => 'FRAME_MEDIA_HOST is not set.' ];
+		}
+
+		$ids = get_posts( [ 'post_type' => 'attachment', 'post_status' => 'inherit', 'post_mime_type' => 'image', 'posts_per_page' => 1, 'fields' => 'ids', 'orderby' => 'ID', 'order' => 'DESC' ] );
+
+		if ( ! $ids ) {
+			return [ 'ok' => false, 'status' => 0, 'served_by' => '', 'url' => '', 'message' => 'No image attachments to test with.' ];
+		}
+
+		$url = add_query_arg( 'w', '100', wp_get_attachment_url( $ids[0] ) );
+		$response = wp_remote_get( $url, [ 'timeout' => 15 ] );
+
+		if ( is_wp_error( $response ) ) {
+			return [ 'ok' => false, 'status' => 0, 'served_by' => '', 'url' => $url, 'message' => $response->get_error_message() ];
+		}
+
+		$status = wp_remote_retrieve_response_code( $response );
+		$served = wp_remote_retrieve_header( $response, 'x-img-served-by' );
+
+		return [
+			'ok' => $status === 200 && $served,
+			'status' => $status,
+			'served_by' => $served,
+			'url' => $url,
+			'message' => $status === 200 ? "Served by the worker ({$served})." : "Worker answered {$status}.",
+		];
 	}
 
 	/**

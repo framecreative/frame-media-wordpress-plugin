@@ -35,6 +35,15 @@ the site opts in.
   only — WordPress intermediates and Timber resize output — never the attached
   file or `original_image`.
 
+## Admin
+
+Tools → Media Kit shows the plugin version, whether the kit is active, the
+worker host, whether the faces secret is set, and a live check that fetches
+one image through the worker and reports the tier that served it. A Site
+Health test goes critical when the worker fails to serve a test image.
+Nothing is configured from the admin; clean-up stays on the CLI so large
+libraries are not bound by a request timeout.
+
 ## Twig
 
 - `{{ src | media({ w: 800, aspect: 0.75, g: 'top' }) }}` → one worker URL.
