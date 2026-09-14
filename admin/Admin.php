@@ -84,7 +84,7 @@ class Admin {
 			<?php if ( $stats ) : ?>
 			<table class="widefat striped" style="max-width: 720px">
 				<tbody>
-					<tr><th style="width: 200px">Image attachments</th><td><?php echo number_format_i18n( $stats['images'] ); ?><?php echo $stats['missing_files'] ? ' <span style="color:#b32d2e">(' . number_format_i18n( $stats['missing_files'] ) . ' with no file on disk)</span>' : ''; ?></td></tr>
+					<tr><th style="width: 200px">Image attachments</th><td><?php echo number_format_i18n( $stats['images'] ); ?></td></tr>
 					<tr><th>Originals on disk</th><td><?php echo esc_html( self::mb( $stats['attached_bytes'] ) ); ?></td></tr>
 					<tr><th>Generated files on disk</th><td>
 						<?php echo number_format_i18n( $stats['generated_files'] ); ?> files, <?php echo esc_html( self::mb( $stats['generated_bytes'] ) ); ?>

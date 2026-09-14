@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- Admin: the image attachment count no longer carries the "no file on disk" figure, which was misleading on offloaded sites.
+
 ## 1.3.0
 
 - Offloaded media: URLs on WP Offload Media's delivery domain (CloudFront or the bucket) are recognised as this site's uploads, so sites serving from S3 work without configuration; the worker's origin is then the delivery domain and `uploadPrefix` its object prefix. `FRAME_MEDIA_UPLOAD_BASES` and the `frame_media/upload_bases` filter cover other CDNs.
