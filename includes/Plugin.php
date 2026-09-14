@@ -2,9 +2,8 @@
 /**
  * Frame Media — the WordPress side of the Frame Media Kit.
  *
- * Active only when FRAME_MEDIA_HOST is set (constant or env, read through
- * Frame_Core::config when frame-core is present); otherwise every filter
- * falls back to native WordPress / Timber behaviour.
+ * Active only when FRAME_MEDIA_HOST is set (constant or env); otherwise
+ * every filter falls back to native WordPress / Timber behaviour.
  *
  * Twig: `{{ src | media({ w: 800, aspect: 0.75 }) }}` for one URL,
  * `{{ src | media_srcset({ width: 2000, aspect: 0.75 }) }}` for a ladder
@@ -704,18 +703,21 @@ class Plugin {
 		return "$scheme://$host";
 	}
 
+	/**
+	 * Setting by name: a defined constant first, then the environment.
+	 *
+	 * @param string     $name
+	 * @param mixed|null $default
+	 * @return mixed
+	 */
 	private static function config( $name, $default = null ) {
-		if ( class_exists( '\\Frame_Core' ) && method_exists( '\\Frame_Core', 'config' ) ) {
-			return \Frame_Core::config( $name, $default );
-		}
-
 		if ( defined( $name ) ) {
 			return constant( $name );
 		}
 
 		$value = getenv( $name );
 
-		return $value === false ? $default : $value;
+		return $value === false || $value === '' ? $default : $value;
 	}
 
 }

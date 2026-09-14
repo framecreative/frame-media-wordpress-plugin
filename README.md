@@ -49,8 +49,7 @@ faces.
 
 ## Configuration
 
-Read from constants or the environment (through `Frame_Core::config` when
-frame-core is installed):
+Read from a defined constant first, then the environment:
 
 | Name | Purpose |
 | --- | --- |
