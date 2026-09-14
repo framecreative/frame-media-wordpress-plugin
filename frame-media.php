@@ -14,8 +14,8 @@ defined( 'ABSPATH' ) || exit;
 define( 'FRAME_MEDIA_VERSION', '1.0.0' );
 define( 'FRAME_MEDIA_DIR', __DIR__ );
 
-require_once __DIR__ . '/includes/class-media-kit.php';
+require_once __DIR__ . '/includes/Plugin.php';
 
 add_action( 'plugins_loaded', function () {
-	FC_Media_Kit::instance();
+	\Frame\Media\Plugin::instance();
 }, 5 );

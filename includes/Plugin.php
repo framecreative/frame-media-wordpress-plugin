@@ -18,7 +18,9 @@
  * and -scaled files are never touched.
  */
 
-class FC_Media_Kit {
+namespace Frame\Media;
+
+class Plugin {
 
 	/** Width rungs the worker snaps to; keep in sync with src/params.js. */
 	const LADDER = [ 50, 100, 160, 240, 320, 400, 500, 640, 800, 1000, 1280, 1600, 2000, 2560 ];
@@ -61,8 +63,8 @@ class FC_Media_Kit {
 
 		add_filter( 'timber/twig', [ $this, 'add_to_twig' ] );
 
-		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			WP_CLI::add_command( 'frame-media', [ $this, 'cli' ] );
+		if ( defined( 'WP_CLI' ) && \WP_CLI ) {
+			\WP_CLI::add_command( 'frame-media', [ $this, 'cli' ] );
 		}
 
 		if ( ! $this->base ) {
@@ -419,8 +421,8 @@ class FC_Media_Kit {
 			return $content;
 		}
 
-		$host = preg_quote( wp_parse_url( $this->upload_url, PHP_URL_HOST ), '#' );
-		$path = preg_quote( wp_parse_url( $this->upload_url, PHP_URL_PATH ), '#' );
+		$host = preg_quote( wp_parse_url( $this->upload_url, \PHP_URL_HOST ), '#' );
+		$path = preg_quote( wp_parse_url( $this->upload_url, \PHP_URL_PATH ), '#' );
 		$file = '/[^\s"\'<>()?,]+\.(?:' . self::IMAGE_EXTENSIONS . ')';
 
 		// Absolute URLs on this site's host, then root-relative ones at the
@@ -480,7 +482,7 @@ class FC_Media_Kit {
 		$limit = (int) ( $assoc['limit'] ?? 0 );
 
 		if ( ! in_array( $command, [ 'clean', 'status' ], true ) ) {
-			WP_CLI::error( 'Usage: wp frame-media clean [--dry-run] [--limit=<n>] | status' );
+			\WP_CLI::error( 'Usage: wp frame-media clean [--dry-run] [--limit=<n>] | status' );
 		}
 
 		$ids = get_posts( [
@@ -525,7 +527,7 @@ class FC_Media_Kit {
 		$mb = round( $bytes / 1048576, 1 );
 		$verb = $dry ? 'Would delete' : 'Deleted';
 
-		WP_CLI::success( "$verb $files generated files ($mb MB) across $attachments of " . count( $ids ) . ' image attachments.' );
+		\WP_CLI::success( "$verb $files generated files ($mb MB) across $attachments of " . count( $ids ) . ' image attachments.' );
 	}
 
 	/**
@@ -560,11 +562,11 @@ class FC_Media_Kit {
 		}
 
 		$base = basename( ! empty( $meta['original_image'] ) ? $meta['original_image'] : $file );
-		$stem = preg_quote( pathinfo( $base, PATHINFO_FILENAME ), '#' );
-		$stem_scaled = preg_quote( pathinfo( basename( $file ), PATHINFO_FILENAME ), '#' );
+		$stem = preg_quote( pathinfo( $base, \PATHINFO_FILENAME ), '#' );
+		$stem_scaled = preg_quote( pathinfo( basename( $file ), \PATHINFO_FILENAME ), '#' );
 		$pattern = '#^(?:' . $stem . '|' . $stem_scaled . ')-\d+x\d+(?:-c-[a-z-]+)?\.(?:' . self::IMAGE_EXTENSIONS . ')$#i';
 
-		foreach ( glob( $dir . '/' . str_replace( [ '[', ']' ], [ '\[', '\]' ], pathinfo( $base, PATHINFO_FILENAME ) ) . '-*' ) ?: [] as $sibling ) {
+		foreach ( glob( $dir . '/' . str_replace( [ '[', ']' ], [ '\[', '\]' ], pathinfo( $base, \PATHINFO_FILENAME ) ) . '-*' ) ?: [] as $sibling ) {
 			if ( preg_match( $pattern, basename( $sibling ) ) ) {
 				$found[ basename( $sibling ) ] = true;
 			}
@@ -592,7 +594,7 @@ class FC_Media_Kit {
 	private function worker_url( $path, $params = [] ) {
 		$url = $this->base . $path;
 
-		return $params ? $url . '?' . http_build_query( $params, '', '&', PHP_QUERY_RFC3986 ) : $url;
+		return $params ? $url . '?' . http_build_query( $params, '', '&', \PHP_QUERY_RFC3986 ) : $url;
 	}
 
 	/**
@@ -604,7 +606,7 @@ class FC_Media_Kit {
 	 */
 	private function upload_path( $url ) {
 		$url = strtok( (string) $url, '?#' );
-		$upload_path = wp_parse_url( $this->upload_url, PHP_URL_PATH );
+		$upload_path = wp_parse_url( $this->upload_url, \PHP_URL_PATH );
 
 		if ( strpos( $url, $this->upload_url . '/' ) === 0 ) {
 			return substr( $url, strlen( $this->upload_url ) - strlen( $upload_path ) );
@@ -639,7 +641,7 @@ class FC_Media_Kit {
 	}
 
 	private function version_for_path( $path ) {
-		$upload_path = wp_parse_url( $this->upload_url, PHP_URL_PATH );
+		$upload_path = wp_parse_url( $this->upload_url, \PHP_URL_PATH );
 		$file = $this->upload_dir . substr( $path, strlen( $upload_path ) );
 
 		return is_file( $file ) ? (string) filemtime( $file ) : '';
@@ -703,8 +705,8 @@ class FC_Media_Kit {
 	}
 
 	private static function config( $name, $default = null ) {
-		if ( class_exists( 'Frame_Core' ) && method_exists( 'Frame_Core', 'config' ) ) {
-			return Frame_Core::config( $name, $default );
+		if ( class_exists( '\\Frame_Core' ) && method_exists( '\\Frame_Core', 'config' ) ) {
+			return \Frame_Core::config( $name, $default );
 		}
 
 		if ( defined( $name ) ) {
