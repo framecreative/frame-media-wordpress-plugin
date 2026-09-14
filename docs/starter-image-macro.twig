@@ -1,0 +1,17 @@
+{% macro image( args ) %}
+
+	{% set args = {
+		width : args.width ?: 2000
+	} | merge( args ) %}
+
+	{# A W-H variation (3-2, 16-9) sets the crop aspect; anything else sizes by width and CSS crops. #}
+	{% set aspect = args.aspect ?: media_aspect( args.variation ) %}
+
+	<div class="o-image{{ args.variation ? ' o-image--' ~ args.variation }}">
+		{% if args.src %}
+			<img class="lazyload" data-sizes="auto" data-src="{{ args.src | media({ w: args.width, aspect: aspect }) }}" data-srcset="{{ args.src | media_srcset({ width: args.width, aspect: aspect }) }}" alt="{{ args.alt }}" />
+			<noscript><img src="{{ args.src | media({ w: args.width, aspect: aspect }) }}" srcset="{{ args.src | media_srcset({ width: args.width, aspect: aspect }) }}" alt="{{ args.alt }}" class="lazyload" /></noscript>
+		{% endif %}
+	</div>
+
+{% endmacro %}
