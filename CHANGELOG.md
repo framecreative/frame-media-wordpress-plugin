@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.2
+
+- `clean` / `status`: every attachment's own file and original image are protected from every other attachment's sibling match (an uploaded file named like a generated size is never removed), and each file is counted once, so dry-run and real-run figures agree.
+
 ## 1.3.1
 
 - Admin: the image attachment count no longer carries the "no file on disk" figure, which was misleading on offloaded sites.

@@ -523,8 +523,13 @@ class Plugin {
 
 		$result = [ 'scanned' => count( $ids ), 'attachments' => 0, 'files' => 0, 'bytes' => 0, 'deleted' => $delete ];
 
+		// Every attachment's own file is protected from every other
+		// attachment's sibling match, and each path is counted once.
+		$this->protected = $this->attached_files( $ids );
+		$seen = [];
+
 		foreach ( $ids as $id ) {
-			$generated = $this->generated_files( $id );
+			$generated = array_diff( $this->generated_files( $id ), array_keys( $seen ) );
 
 			if ( ! $generated ) {
 				continue;
@@ -533,6 +538,7 @@ class Plugin {
 			$result['attachments']++;
 
 			foreach ( $generated as $file ) {
+				$seen[ $file ] = true;
 				$result['files']++;
 				$result['bytes'] += filesize( $file ) ?: 0;
 
@@ -722,10 +728,40 @@ class Plugin {
 		];
 	}
 
+	/** @var array<string, true> Attached files and originals of every attachment, by path. */
+	private $protected = [];
+
+	/**
+	 * Paths of every attachment's attached file and original image.
+	 *
+	 * @param int[] $ids
+	 * @return array<string, true>
+	 */
+	private function attached_files( $ids ) {
+		$paths = [];
+
+		foreach ( $ids as $id ) {
+			$file = get_attached_file( $id );
+
+			if ( ! $file ) {
+				continue;
+			}
+
+			$paths[ $file ] = true;
+			$meta = wp_get_attachment_metadata( $id );
+
+			if ( ! empty( $meta['original_image'] ) ) {
+				$paths[ dirname( $file ) . '/' . $meta['original_image'] ] = true;
+			}
+		}
+
+		return $paths;
+	}
+
 	/**
 	 * Generated files for an attachment: WordPress intermediates from
 	 * metadata plus Timber/WordPress-pattern siblings on disk. Never the
-	 * attached file or the original image.
+	 * attached file or original image of this or any other attachment.
 	 *
 	 * @param int $attachment_id
 	 * @return string[]
@@ -772,6 +808,10 @@ class Plugin {
 			}
 
 			$path = $dir . '/' . $name;
+
+			if ( isset( $this->protected[ $path ] ) ) {
+				continue;
+			}
 
 			if ( is_file( $path ) ) {
 				$files[] = $path;
