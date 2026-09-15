@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3
+
+- `clean` writes the emptied `sizes` metadata directly instead of through `wp_update_attachment_metadata`, so offload plugins no longer re-upload every original during a clean.
+
 ## 1.3.2
 
 - `clean` / `status`: every attachment's own file and original image are protected from every other attachment's sibling match (an uploaded file named like a generated size is never removed), and each file is counted once, so dry-run and real-run figures agree.

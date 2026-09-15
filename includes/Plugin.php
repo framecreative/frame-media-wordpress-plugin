@@ -548,9 +548,11 @@ class Plugin {
 			}
 
 			if ( $delete ) {
+				// Written directly: wp_update_attachment_metadata() would fire
+				// offload plugins (re-uploading originals) and our own ping.
 				$meta = wp_get_attachment_metadata( $id );
 				$meta['sizes'] = [];
-				wp_update_attachment_metadata( $id, $meta );
+				update_post_meta( $id, '_wp_attachment_metadata', $meta );
 			}
 		}
 
